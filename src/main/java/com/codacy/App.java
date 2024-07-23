@@ -3,15 +3,23 @@ package com.codacy;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import com.codacy.clients.CodacyAPIClient;
 import com.codacy.clients.models.Count;
 import com.codacy.clients.models.IssuesOverview;
 import com.codacy.clients.models.RepositoryIssue;
 import com.codacy.clients.models.RepositoryWithAnalysis;
+import com.codacy.utils.SpiderChartUtil;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -21,10 +29,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class App {
+
+    private static int REGULAR_LINE_OFFSET = -15;
+    private static int TITLE_LINE_OFFSET = -20;
+
     public static void main(String[] args) {
         try {
             if (args.length < 4) {
-                System.out.println("Usage: java -jar pdf_generator.jar <provider> <organization> <repository> <api-token>");
+                System.out.println(
+                        "Usage: java -jar pdf_generator.jar <provider> <organization> <repository> <api-token>");
                 System.exit(1);
             }
 
@@ -51,26 +64,36 @@ public class App {
         contentStream.showText(String.format("%s: ", label));
         contentStream.setFont(PDType1Font.HELVETICA, 8);
         contentStream.showText(value);
-        contentStream.newLineAtOffset(0, -15);
+        contentStream.newLineAtOffset(0, REGULAR_LINE_OFFSET);
     }
 
     private static void renderTitle(PDPageContentStream contentStream, String title) throws IOException {
         contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14);
         contentStream.showText(title);
-        contentStream.newLineAtOffset(0, -20);
+        contentStream.newLineAtOffset(0, TITLE_LINE_OFFSET);
     }
 
     private static void renderSubTitle(PDPageContentStream contentStream, String title) throws IOException {
         contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
         contentStream.newLineAtOffset(0, -5);
         contentStream.showText(title);
-        contentStream.newLineAtOffset(0, -15);
+        contentStream.newLineAtOffset(0, REGULAR_LINE_OFFSET);
+    }
+
+    private static void renderSpiderChart(PDDocument document, PDPageContentStream contentStream, double[][] data,
+            String[] chartCategories, int x, int y, String title) throws IOException {
+        String[] seriesNames = { "Series1" };
+        OutputStream out = SpiderChartUtil.createSpiderChart(title, data, chartCategories, seriesNames);
+        InputStream chartInputStream = new ByteArrayInputStream(((ByteArrayOutputStream) out).toByteArray());
+        PDImageXObject pdImage = PDImageXObject.createFromByteArray(document, chartInputStream.readAllBytes(),
+                "categories_chart.png");
+        contentStream.drawImage(pdImage, x, y, 150, 150);
     }
 
     private static void createHelloWorldPDF(String fileName, RepositoryWithAnalysis rwa, IssuesOverview io,
             List<RepositoryIssue> issues) {
         PDDocument document = new PDDocument();
-        
+
         // Doc cover
         PDPage page = new PDPage();
         document.addPage(page);
@@ -102,26 +125,53 @@ public class App {
             contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
             contentStream.newLineAtOffset(100, 700);
             renderTitle(contentStream, "Issues Overview");
+            contentStream.endText();
+            contentStream.beginText();
+            contentStream.newLineAtOffset(100, 650);
             renderSubTitle(contentStream, "Categories");
 
-            for (Count item : io.getCategories()) {
+            List<Count> categories = io.getCategories();
+            double[][] categoriesData = new double[1][categories.size()];
+            categoriesData[0] = categories.stream().mapToDouble(m -> (double) m.getTotal()).toArray();
+            String[] chartCategories = categories.stream().map(Count::getName).toArray(String[]::new);
+            for (Count item : categories) {
                 renderLabelAndValue(contentStream, item.getName(), String.valueOf(item.getTotal()));
-
             }
-
+            contentStream.endText();
+            contentStream.beginText();
+            contentStream.newLineAtOffset(250, 650);
+            List<Count> languages = io.getLanguages();
+            double[][] languagesData = new double[1][languages.size()];
+            languagesData[0] = languages.stream().mapToDouble(m -> (double) m.getTotal()).toArray();
+            String[] chartLanguages = languages.stream().map(Count::getName).toArray(String[]::new);
             renderSubTitle(contentStream, "Languages");
-
-            for (Count item : io.getLanguages()) {
+            for (Count item : languages) {
                 renderLabelAndValue(contentStream, item.getName(), String.valueOf(item.getTotal()));
             }
-            renderSubTitle(contentStream, "Levels");
+            contentStream.endText();
 
+            contentStream.beginText();
+            contentStream.newLineAtOffset(400, 650);
+            renderSubTitle(contentStream, "Levels");
+            List<Count> levels = io.getLevels();
+            double[][] levelsData = new double[1][levels.size()];
+            levelsData[0] = levels.stream().mapToDouble(m -> (double) m.getTotal()).toArray();
+            String[] chartLevels = levels.stream().map(Count::getName).toArray(String[]::new);
             for (Count item : io.getLevels()) {
                 renderLabelAndValue(contentStream, item.getName(), String.valueOf(item.getTotal()));
             }
 
-            contentStream.newLineAtOffset(0, -20);
+            contentStream.newLineAtOffset(0, TITLE_LINE_OFFSET);
             contentStream.endText();
+
+            // charts
+            // contentStream.saveGraphicsState();
+            // contentStream.restoreGraphicsState();
+            // categories
+            renderSpiderChart(document, contentStream, categoriesData, chartCategories, 100, 200, "Categories");
+            renderSpiderChart(document, contentStream, languagesData, chartLanguages, 250, 200, "Languages");
+            renderSpiderChart(document, contentStream, levelsData, chartLevels, 400, 200, "Levels");
+
         } catch (IOException e) {
             e.printStackTrace();
         }
