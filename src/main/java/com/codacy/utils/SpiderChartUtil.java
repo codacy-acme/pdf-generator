@@ -34,6 +34,7 @@ public class SpiderChartUtil {
         JFreeChart chart = new JFreeChart(title, JFreeChart.DEFAULT_TITLE_FONT, plot, false);
         chart.setBackgroundPaint(Color.white);
         chart.setBorderVisible(false);
+    
         
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -14,9 +14,9 @@ import com.codacy.clients.models.RepositoryIssue;
 import com.codacy.clients.models.RepositoryWithAnalysis;
 import com.codacy.utils.SpiderChartUtil;
 
+import java.awt.Color;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -32,6 +32,10 @@ public class App {
 
     private static int REGULAR_LINE_OFFSET = -15;
     private static int TITLE_LINE_OFFSET = -20;
+
+    private static final float HEADER_Y_POSITION = 750;
+    private static final float FOOTER_Y_POSITION = 50;
+    private static final float MARGIN = 50;
 
     public static void main(String[] args) {
         try {
@@ -68,6 +72,7 @@ public class App {
     }
 
     private static void renderTitle(PDPageContentStream contentStream, String title) throws IOException {
+        contentStream.setNonStrokingColor(Color.black);
         contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14);
         contentStream.showText(title);
         contentStream.newLineAtOffset(0, TITLE_LINE_OFFSET);
@@ -90,15 +95,50 @@ public class App {
         contentStream.drawImage(pdImage, x, y, 150, 150);
     }
 
+    private static void drawHeader(PDPageContentStream contentStream, String headerText, PDPage page, PDDocument document, String imagePath) throws IOException {
+        int fontSize = 8;
+        PDRectangle mediaBox = page.getMediaBox();
+        float stringWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(headerText) / 1000 * fontSize; // font size 12
+        float startX = mediaBox.getWidth() - MARGIN - stringWidth;
+        contentStream.beginText();
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, fontSize);
+        contentStream.setNonStrokingColor(Color.gray);
+        contentStream.newLineAtOffset(startX, HEADER_Y_POSITION);
+        contentStream.showText(headerText);
+        contentStream.endText();
+
+        // Load and draw footer image
+        PDImageXObject footerImage = PDImageXObject.createFromFile(imagePath, document);
+        float imageWidth = 100; // Set the desired width of the image
+        float imageHeight = 59; // Set the desired height of the image
+        //float imageX = mediaBox.getWidth() - MARGIN - imageWidth;
+        float imageY = HEADER_Y_POSITION - (imageHeight / 2); // Center the image vertically with respect to the text
+
+        contentStream.drawImage(footerImage, MARGIN, imageY, imageWidth, imageHeight);
+    }
+
+    private static void drawFooter(PDPageContentStream contentStream, String footerText) throws IOException {
+        int fontSize = 8;
+        contentStream.beginText();
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, fontSize);
+        contentStream.setNonStrokingColor(Color.gray);
+        contentStream.newLineAtOffset(MARGIN, FOOTER_Y_POSITION);
+        contentStream.showText(footerText);
+        contentStream.endText();
+    }
+
     private static void createHelloWorldPDF(String fileName, RepositoryWithAnalysis rwa, IssuesOverview io,
             List<RepositoryIssue> issues) {
         PDDocument document = new PDDocument();
 
+        String reportDate = new SimpleDateFormat("dd-MM-yyyy").format(new Date());
+        String headerImagePath = "src/main/resources/Brand__Codacy_lilac.png";
         // Doc cover
         PDPage page = new PDPage();
         document.addPage(page);
 
         try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+            drawHeader(contentStream, "Codacy Audit Report", page, document, headerImagePath);
             contentStream.beginText();
             contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
             contentStream.newLineAtOffset(100, 700);
@@ -111,8 +151,9 @@ public class App {
             renderLabelAndValue(contentStream, "Languages", String.join(", ", rwa.getLanguages()));
             renderLabelAndValue(contentStream, "Issues Count", String.valueOf(rwa.getIssuesCount()));
             renderLabelAndValue(contentStream, "Complex Files", String.valueOf(rwa.getComplexFilesCount()));
-            renderLabelAndValue(contentStream, "Date", new SimpleDateFormat("dd-MM-yyyy").format(new Date()));
+            renderLabelAndValue(contentStream, "Date", reportDate);
             contentStream.endText();
+            drawFooter(contentStream, String.format("This report was generated using Codacy on %s", reportDate));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -121,6 +162,7 @@ public class App {
         PDPage issuesOverviewPage = new PDPage();
         document.addPage(issuesOverviewPage);
         try (PDPageContentStream contentStream = new PDPageContentStream(document, issuesOverviewPage)) {
+            drawHeader(contentStream, "Codacy Audit Report", issuesOverviewPage, document, headerImagePath);
             contentStream.beginText();
             contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
             contentStream.newLineAtOffset(100, 700);
@@ -171,7 +213,7 @@ public class App {
             renderSpiderChart(document, contentStream, categoriesData, chartCategories, 100, 200, "Categories");
             renderSpiderChart(document, contentStream, languagesData, chartLanguages, 250, 200, "Languages");
             renderSpiderChart(document, contentStream, levelsData, chartLevels, 400, 200, "Levels");
-
+            drawFooter(contentStream, String.format("This report was generated using Codacy on %s", reportDate));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -188,6 +230,7 @@ public class App {
             PDPage patternsPage = new PDPage();
             document.addPage(patternsPage);
             try (PDPageContentStream contentStream = new PDPageContentStream(document, patternsPage)) {
+                drawHeader(contentStream, "Codacy Audit Report", patternsPage, document, headerImagePath);
                 contentStream.beginText();
                 contentStream.newLineAtOffset(100, 700);
                 renderTitle(contentStream,
@@ -196,6 +239,7 @@ public class App {
                     renderLabelAndValue(contentStream, item.getName(), String.valueOf(item.getTotal()));
                 }
                 contentStream.endText();
+                drawFooter(contentStream, String.format("This report was generated using Codacy on %s", reportDate));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -213,6 +257,7 @@ public class App {
             PDPage issuesPage = new PDPage();
             document.addPage(issuesPage);
             try (PDPageContentStream contentStream = new PDPageContentStream(document, issuesPage)) {
+                drawHeader(contentStream, "Codacy Audit Report", issuesPage, document, headerImagePath);
                 contentStream.beginText();
                 contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
                 contentStream.newLineAtOffset(100, 700);
@@ -233,6 +278,7 @@ public class App {
                     contentStream.newLineAtOffset(0, -10);
                 }
                 contentStream.endText();
+                drawFooter(contentStream, String.format("This report was generated using Codacy on %s", reportDate));
             } catch (IOException e) {
                 e.printStackTrace();
             }
